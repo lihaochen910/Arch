@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Arch.Core;
 using Arch.Core.Extensions;
+using Arch.Core.Extensions.Internal;
 
 namespace Arch.Core;
 
@@ -62,14 +63,12 @@ internal ref struct EntitySlot
     ///     A reference to its <see cref="Slot"/>.
     /// </summary>
     public Slot Slot;
-
-
+    
     /// <summary>
     ///     Initializes a new instance of the <see cref="EntityInfo"/> struct.
     /// </summary>
     /// <param name="archetype">Its <see cref="Archetype"/>.</param>
     /// <param name="slot">Its <see cref="Slot"/>.</param>
-    /// <param name="version">Its version.</param>
     public EntitySlot(ref Archetype archetype, ref Slot slot)
     {
         Archetype = archetype;
@@ -87,26 +86,26 @@ internal class EntityInfoStorage
     /// <summary>
     ///     The <see cref="Entity"/> versions in an jagged array.
     /// </summary>
-    private JaggedArray<int> _versions;
+    internal JaggedArray<int> Versions { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; set; }
 
     /// <summary>
     ///     The <see cref="Entity"/> <see cref="Archetype"/>s in an jagged array.
     /// </summary>
-    private JaggedArray<Archetype> _archetypes;
+    internal JaggedArray<Archetype> Archetypes { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; set; }
 
     /// <summary>
     ///     The <see cref="Entity"/> <see cref="Slot"/>s in an jagged array.
     /// </summary>
-    private JaggedArray<Slot> _slots;
+    internal JaggedArray<Slot> Slots { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; set; }
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="EntityInfoStorage"/> class.
     /// </summary>
-    public EntityInfoStorage()
+    internal EntityInfoStorage()
     {
-        _versions = new JaggedArray<int>(-1);
-        _archetypes = new JaggedArray<Archetype>();
-        _slots = new JaggedArray<Slot>(new Slot(-1,-1));
+        Versions = new JaggedArray<int>(-1);
+        Archetypes = new JaggedArray<Archetype>();
+        Slots = new JaggedArray<Slot>(new Slot(-1,-1));
     }
 
     /// <summary>
@@ -119,9 +118,9 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(int id, int version, Archetype archetype, Slot slot)
     {
-        _versions.Add(id, version);
-        _archetypes.Add(id, archetype);
-        _slots.Add(id, slot);
+        Versions.Add(id, version);
+        Archetypes.Add(id, archetype);
+        Slots.Add(id, slot);
     }
 
     /// <summary>
@@ -132,7 +131,7 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Has(int id)
     {
-        return _versions.TryGetValue(id, out _);
+        return Versions.TryGetValue(id, out _);
     }
 
     /// <summary>
@@ -143,7 +142,7 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Archetype GetArchetype(int id)
     {
-        return _archetypes[id];
+        return Archetypes[id];
     }
 
     /// <summary>
@@ -154,7 +153,7 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref Slot GetSlot(int id)
     {
-        return ref _slots[id];
+        return ref Slots[id];
     }
 
     /// <summary>
@@ -165,7 +164,7 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int GetVersion(int id)
     {
-        return _versions[id];
+        return Versions[id];
     }
 
     /// <summary>
@@ -177,7 +176,7 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGetVersion(int id, out int version)
     {
-        return _versions.TryGetValue(id, out version);
+        return Versions.TryGetValue(id, out version);
     }
 
     /// <summary>
@@ -188,7 +187,7 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public EntitySlot GetEntitySlot(int id)
     {
-        return new EntitySlot(ref _archetypes[id], ref _slots[id]);
+        return new EntitySlot(ref Archetypes[id], ref Slots[id]);
     }
 
     /// <summary>
@@ -198,9 +197,9 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Remove(int id)
     {
-        _archetypes.Remove(id);
-        _slots.Remove(id);
-        _versions.Remove(id);
+        Archetypes.Remove(id);
+        Slots.Remove(id);
+        Versions.Remove(id);
     }
 
     /// <summary>
@@ -211,7 +210,7 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Move(int id, Slot slot)
     {
-        _slots[id] = slot;
+        Slots[id] = slot;
     }
 
     /// <summary>
@@ -223,12 +222,14 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Move(int id, Archetype archetype, Slot slot)
     {
-        _archetypes[id] = archetype;
-        _slots[id] = slot;
+        Archetypes[id] = archetype;
+        Slots[id] = slot;
     }
 
+    /// TODO : Find a cleaner way to break? One that does NOT require a branching?
     /// <summary>
     ///     Updates the <see cref="EntityInfo"/> and all entities that moved/shifted between the archetypes.
+    ///     <remarks>Use and modify with caution, one small logical issue and the whole framework stops working.</remarks>
     /// </summary>
     /// <param name="archetype">The old <see cref="Archetype"/>.</param>
     /// <param name="archetypeSlot">The old <see cref="Slot"/> where the shift operation started.</param>
@@ -238,20 +239,31 @@ internal class EntityInfoStorage
     public void Shift(Archetype archetype, Slot archetypeSlot, Archetype newArchetype, Slot newArchetypeSlot)
     {
         // Update the entityInfo of all copied entities.
-        for (var chunkIndex = archetypeSlot.ChunkIndex; chunkIndex >= 0; --chunkIndex)
+        //for (var chunkIndex = archetypeSlot.ChunkIndex; chunkIndex >= 0; --chunkIndex)
+        for (var chunkIndex = 0; chunkIndex <= archetypeSlot.ChunkIndex; chunkIndex++)
         {
+            // Get data
             ref var chunk = ref archetype.GetChunk(chunkIndex);
             ref var entityFirstElement = ref chunk.Entity(0);
-            for (var index = archetypeSlot.Index; index >= 0; --index)
+
+            // Only move within the range, depening on which chunk we are at.
+            var isStart = chunkIndex == archetypeSlot.ChunkIndex;
+            var upper = isStart ? archetypeSlot.Index : chunk.Size-1;
+
+            //for (var index = upper; index >= 0; --index)
+            for(var index = 0; index <= upper; index++)
             {
                 ref readonly var entity = ref Unsafe.Add(ref entityFirstElement, index);
-
-                // Calculate new entity slot based on its old slot.
-                var entitySlot = new Slot(index, chunkIndex);
-                var newSlot = Slot.Shift(entitySlot, archetype.EntitiesPerChunk, newArchetypeSlot, newArchetype.EntitiesPerChunk);
-
+                
                 // Update entity info
-                Move(entity.Id, newArchetype, newSlot);
+                Move(entity.Id, newArchetype, newArchetypeSlot);
+                newArchetypeSlot++;
+                
+                if (newArchetypeSlot.Index >= newArchetype.EntitiesPerChunk)
+                {
+                    newArchetypeSlot.Index = 0;
+                    newArchetypeSlot.ChunkIndex++;
+                }
             }
         }
     }
@@ -263,9 +275,9 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void EnsureCapacity(int capacity)
     {
-        _versions.EnsureCapacity(capacity);
-        _archetypes.EnsureCapacity(capacity);
-        _slots.EnsureCapacity(capacity);
+        Versions.EnsureCapacity(capacity);
+        Archetypes.EnsureCapacity(capacity);
+        Slots.EnsureCapacity(capacity);
     }
 
     /// <summary>
@@ -275,9 +287,9 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TrimExcess()
     {
-        _versions.TrimExcess();
-        _archetypes.TrimExcess();
-        _slots.TrimExcess();
+        Versions.TrimExcess();
+        Archetypes.TrimExcess();
+        Slots.TrimExcess();
     }
 
     /// <summary>
@@ -286,24 +298,24 @@ internal class EntityInfoStorage
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Clear()
     {
-        _versions.Clear();
-        _archetypes.Clear();
-        _slots.Clear();
+        Versions.Clear();
+        Archetypes.Clear();
+        Slots.Clear();
     }
 
     /// <summary>
     ///     Returns a <see cref="EntityInfo"/> at an given index.
     /// </summary>
     /// <param name="id">The index.</param>
-    public EntityInfo this[int id]
+    internal EntityInfo this[int id]
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => new(_archetypes[id], _slots[id], _versions[id]);
+        get => new(Archetypes[id], Slots[id], Versions[id]);
     }
 }
 
 /// <summary>
-///     The <see cref="JaggedArray"/> class
+///     The <see cref="JaggedArray{T}"/> class
 ///     represents an jagged array that stores <see cref="EntityInfo"/> for quickly acessing it.
 /// </summary>
 internal class JaggedArray<T>
@@ -317,7 +329,7 @@ internal class JaggedArray<T>
     /// <summary>
     ///     The jagged array storing the <see cref="EntityInfo"/>.
     /// </summary>
-    private T[][] _entityInfos = Array.Empty<T[]>();
+    private T[][] _items = Array.Empty<T[]>();
 
     /// <summary>
     ///     The fill value for new initialized arrays.
@@ -325,12 +337,12 @@ internal class JaggedArray<T>
     private T filler;
 
     /// <summary>
-    ///     The currently largest id inside this <see cref="JaggedArray"/>, for trimming purposes.
+    ///     The currently largest id inside this <see cref="JaggedArray{T}"/>, for trimming purposes.
     /// </summary>
     private int _largestId;
 
     /// <summary>
-    ///     Initializes the static values of <see cref="JaggedArray"/>.
+    ///     Initializes the static values of <see cref="JaggedArray{T}"/>.
     /// </summary>
     static JaggedArray()
     {
@@ -342,19 +354,32 @@ internal class JaggedArray<T>
     }
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="JaggedArray"/> class.
+    ///     Initializes a new instance of the <see cref="JaggedArray{T}"/> class.
+    /// <param name="filler">A default value which all slots will be filled with.</param>
     /// </summary>
-    public JaggedArray(T filler = default) : this(256, filler)
+    internal JaggedArray(T filler = default) : this(256, filler)
     {
     }
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="JaggedArray"/> class.
+    ///     Initializes a new instance of the <see cref="JaggedArray{T}"/> class.
     /// </summary>
+    /// <param name="filler">A default value which all slots will be filled with.</param>
     /// <param name="capacity">The initial capacity.</param>
-    public JaggedArray(int capacity, T filler = default)
+    internal JaggedArray(int capacity, T filler = default)
     {
         EnsureCapacity(capacity);
+        this.filler = filler;
+    }
+    
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="JaggedArray{T}"/> class.
+    /// </summary>
+    /// <param name="array">The initial array.</param>
+    /// <param name="filler">A default value which all slots will be filled with.</param>
+    internal JaggedArray(T[][] array, T filler = default)
+    {
+        this._items = array;
         this.filler = filler;
     }
 
@@ -399,13 +424,13 @@ internal class JaggedArray<T>
         IdToSlot(id, out var outerIndex, out var innerIndex);
 
         // If the item is outside the array. Then it definetly doesn't exist
-        if (outerIndex > _entityInfos.Length)
+        if (outerIndex > _items.Length)
         {
             entityInfo = filler;
             return false;
         }
 
-        ref var item = ref _entityInfos[outerIndex][innerIndex];
+        ref var item = ref _items[outerIndex][innerIndex];
 
         // If the item is the default then the nobody set its value.
         if (EqualityComparer<T>.Default.Equals(item, filler))
@@ -419,7 +444,7 @@ internal class JaggedArray<T>
     }
 
     /// <summary>
-    ///     Converts the passed id to its inner and outer index ( or slot ) inside the <see cref="_entityInfos"/> array.
+    ///     Converts the passed id to its inner and outer index ( or slot ) inside the <see cref="_items"/> array.
     /// </summary>
     /// <param name="id">The id.</param>
     /// <param name="outerIndex">The outer index.</param>
@@ -446,16 +471,16 @@ internal class JaggedArray<T>
             return;
         }
 
-        var currentSize = _entityInfos.Length;
+        var currentSize = _items.Length;
         var desiredSize = (capacity / _chunkSize) + 1;
 
-        Array.Resize(ref _entityInfos, desiredSize);
+        Array.Resize(ref _items, desiredSize);
 
         // Create the new arrays.
         for (int i = currentSize; i < desiredSize; i++)
         {
             var array = new T[_chunkSize];
-            _entityInfos[i] = new T[_chunkSize];
+            _items[i] = new T[_chunkSize];
             Array.Fill(array, filler);
         }
 
@@ -468,10 +493,10 @@ internal class JaggedArray<T>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TrimExcess()
     {
-        var lastIndexWithNonDefaultValues = _entityInfos.Length - 1;
+        var lastIndexWithNonDefaultValues = _items.Length - 1;
         for (var i = lastIndexWithNonDefaultValues; i >= 0; i--)
         {
-            if (ArrayContainsNonDefaultValues(_entityInfos[i]))
+            if (ArrayContainsNonDefaultValues(_items[i]))
             {
                 break;
             }
@@ -479,7 +504,7 @@ internal class JaggedArray<T>
             lastIndexWithNonDefaultValues = i - 1;
         }
 
-        Array.Resize(ref _entityInfos, lastIndexWithNonDefaultValues + 1);
+        Array.Resize(ref _items, lastIndexWithNonDefaultValues + 1);
         UpdateLargestId();
     }
 
@@ -489,7 +514,7 @@ internal class JaggedArray<T>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Clear()
     {
-        foreach (var array in _entityInfos)
+        foreach (var array in _items)
         {
             Array.Fill(array, filler);
         }
@@ -501,7 +526,7 @@ internal class JaggedArray<T>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void UpdateLargestId()
     {
-        _largestId = _entityInfos.Length * _chunkSize;
+        _largestId = _items.Length * _chunkSize;
     }
 
     /// <summary>
@@ -527,6 +552,7 @@ internal class JaggedArray<T>
     ///     Returns a reference to a <see cref="EntityInfo"/> at an given index.
     /// </summary>
     /// <param name="id">The index.</param>
+    [SkipLocalsInit]
     public ref T this[int id]
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -536,8 +562,30 @@ internal class JaggedArray<T>
 
             EnsureCapacity(id);
             IdToSlot(id, out var outerIndex, out var innerIndex);
-            return ref _entityInfos[outerIndex][innerIndex];
+            return ref _items[outerIndex][innerIndex];
         }
+    }
+
+    /// <summary>
+    ///     A explicit operator converting a <see cref="JaggedArray{T}"/> intance to its underlaying T[][] array.
+    /// </summary>
+    /// <param name="jaggedArray">The <see cref="JaggedArray{T}"/> instance.</param>
+    /// <returns>The underlaying T[][] array. </returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static explicit operator T[][](JaggedArray<T> jaggedArray)
+    {
+        return jaggedArray._items;
+    }
+    
+    /// <summary>
+    ///     A explicit operator converting a T[][] array to its <see cref="JaggedArray{T}"/>.
+    /// </summary>
+    /// <param name="array">The array.</param>
+    /// <returns>The newly created <see cref="JaggedArray{T}"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static explicit operator JaggedArray<T>(T[][] array)
+    {
+        return new JaggedArray<T>(array);
     }
 }
 

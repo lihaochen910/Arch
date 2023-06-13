@@ -1,5 +1,6 @@
 using System.Buffers;
 using Arch.Core.Extensions;
+using Arch.Core.Extensions.Internal;
 using Arch.Core.Utils;
 
 namespace Arch.Core;
@@ -102,7 +103,7 @@ internal record struct Slot
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Slot Shift(in Slot source, int sourceCapacity, in Slot destination, int destinationCapacity)
     {
-        var freeSpot = new Slot(destination.Index, destination.ChunkIndex); // Moving one index further to target an empty destination spot.
+        var freeSpot = destination;
         var resultSlot = source + freeSpot;
         resultSlot.Index += source.ChunkIndex * (sourceCapacity - destinationCapacity); // Berücksichtigen der differenz zwischen den chunks und weiter verschieben.
         resultSlot.Wrap(destinationCapacity);
@@ -151,6 +152,8 @@ public sealed partial class Archetype
 
         Size = 1;
         Capacity = 1;
+
+        _addEdges = new ArrayDictionary<Archetype>(EdgesArrayMaxSize);
     }
 
     /// <summary>
@@ -184,18 +187,18 @@ public sealed partial class Archetype
     ///     How many <see cref="Chunk"/>' have been deposited within the <see cref="Chunks"/> array.
     ///     The total capacity.
     /// </summary>
-    public int Capacity { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; [MethodImpl(MethodImplOptions.AggressiveInlining)] private set; }
+    public int Capacity { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; [MethodImpl(MethodImplOptions.AggressiveInlining)] internal set; }
 
     /// <summary>
     ///     The number of occupied/used <see cref="Chunk"/>'s within the <see cref="Chunks"/> array.
     /// </summary>
-    public int Size { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; [MethodImpl(MethodImplOptions.AggressiveInlining)] private set; }
+    public int Size { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; [MethodImpl(MethodImplOptions.AggressiveInlining)] internal set; }
 
     /// <summary>
     ///     An array which stores the <see cref="Chunk"/>'s.
     ///     May contain null references since its being pooled, therefore use the <see cref="Size"/> and <see cref="Capacity"/> for acessing it.
     /// </summary>
-    public Chunk[] Chunks { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; [MethodImpl(MethodImplOptions.AggressiveInlining)] private set; }
+    public Chunk[] Chunks { [MethodImpl(MethodImplOptions.AggressiveInlining)] get; [MethodImpl(MethodImplOptions.AggressiveInlining)] internal set; }
 
     /// <summary>
     ///     Points to the last <see cref="Chunk"/> that is not yet full.
@@ -361,16 +364,18 @@ public sealed partial class Archetype
         {
             ref var chunk = ref GetChunk(chunkIndex);
             ref var firstElement = ref chunk.GetFirst<T>();
-            foreach(var index in chunk)
+
+            // Only move within the range, depening on which chunk we are at.
+            var isStart = chunkIndex == from.ChunkIndex;
+            var isEnd = chunkIndex == to.ChunkIndex;
+
+            var upper = isStart ? from.Index : chunk.Size-1;
+            var lower = isEnd ? to.Index : 0;
+
+            for (var index = upper; index >= lower; --index)
             {
                 ref var cmp = ref Unsafe.Add(ref firstElement, index);
                 cmp = component;
-
-                // Break to prevent old entities receiving the new value.
-                if (chunkIndex == to.ChunkIndex && index == to.Index)
-                {
-                    break;
-                }
             }
         }
     }
@@ -454,7 +459,7 @@ public sealed unsafe partial class Archetype
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Has(ComponentType type)
     {
-        var id = Component.GetComponentType(type).Id;
+        var id = type.Id;
         return BitSet.IsSet(id);
     }
 
@@ -514,6 +519,7 @@ public sealed unsafe partial class Archetype
         Capacity = newCapacity;
     }
 
+    /// TODO : Currently this only ensures additional entity capacity, instead it should take the whole capacity in count.
     /// <summary>
     ///     Ensures the capacity of the <see cref="Chunks"/> array.
     ///     Increases the <see cref="Capacity"/>.
@@ -528,7 +534,7 @@ public sealed unsafe partial class Archetype
         var neededSpots = newCapacity - freeSpots;
         var neededChunks = (int)Math.Ceiling((float)neededSpots / EntitiesPerChunk);
 
-        if (Capacity > neededChunks)
+        if (Capacity-Size > neededChunks)
         {
             return;
         }
@@ -610,7 +616,7 @@ public sealed partial class Archetype
     internal static void Copy(Archetype source, Archetype destination)
     {
         // Make sure other archetype can fit additional entities from this archetype.
-        destination.EnsureEntityCapacity(destination.Entities+source.Entities);
+        destination.EnsureEntityCapacity(source.Entities);
 
         // Copy chunks into destination chunks
         var sourceChunkIndex = 0;

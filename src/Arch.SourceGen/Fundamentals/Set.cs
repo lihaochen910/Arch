@@ -99,16 +99,18 @@ public static class SetExtensions
                 {
                     ref var chunk = ref GetChunk(chunkIndex);
                     {{getFirstElements}}
-                    foreach(var entityIndex in chunk)
+
+                    // Only move within the range, depening on which chunk we are at.
+                    var isStart = chunkIndex == from.ChunkIndex;
+                    var isEnd = chunkIndex == to.ChunkIndex;
+
+                    var upper = isStart ? from.Index : chunk.Size-1;
+                    var lower = isEnd ? to.Index : 0;
+
+                    for (var entityIndex = upper; entityIndex >= lower; --entityIndex)
                     {
                         {{getComponents}}
                         {{assignComponents}}
-
-                        // Break to prevent old entities receiving the new value.
-                        if (chunkIndex == to.ChunkIndex && entityIndex == to.Index)
-                        {
-                            break;
-                        }
                     }
                 }
             }
@@ -133,20 +135,10 @@ public static class SetExtensions
         var parameters = new StringBuilder().GenericInParams(amount);
         var insertParams = new StringBuilder().InsertGenericInParams(amount);
 
-        var componentEvent = new StringBuilder();
-        for (int i = 0; i <= amount; i++)
+        var events = new StringBuilder();
+        for (var index = 0; index <= amount; index++)
         {
-            componentEvent.AppendLine(
-                $$"""
-                    if (archetype.Has<{{StringBuilderExtensions.MakeGenericBroadcastComponentEventT(i)}}>())
-                    {
-                        ComponentRegistry.GetHookRegistry<{{StringBuilderExtensions.MakeGenericBroadcastComponentEventT(i)}}>().BroadcastComponentSetEvent(entity, new EcsComponentReference(this, entity, typeof({{StringBuilderExtensions.MakeGenericBroadcastComponentEventT(i)}})));
-                    }
-                    else
-                    {
-                        ComponentRegistry.GetHookRegistry<{{StringBuilderExtensions.MakeGenericBroadcastComponentEventT(i)}}>().BroadcastComponentAddEvent(entity, new EcsComponentReference(this, entity, typeof({{StringBuilderExtensions.MakeGenericBroadcastComponentEventT(i)}})));
-                    }
-                    """);
+            events.AppendLine($"OnComponentSet<T{index}>(entity);");
         }
 
         var template =
@@ -154,12 +146,10 @@ public static class SetExtensions
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Set<{{generics}}>(Entity entity, {{parameters}})
             {
-                var entitySlot = EntityInfo.GetEntitySlot(entity.Id);
-                var archetype = entitySlot.Archetype;
-                archetype.Set<{{generics}}>(ref entitySlot.Slot, {{insertParams}});
-                #if ARCH_EVENT
-                {{componentEvent}}
-                #endif
+                var slot = EntityInfo.GetSlot(entity.Id);
+                var archetype = EntityInfo.GetArchetype(entity.Id);
+                archetype.Set<{{generics}}>(ref slot, {{insertParams}});
+                {{events}}
             }
             """;
 

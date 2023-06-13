@@ -1,5 +1,7 @@
 using System.Diagnostics.Contracts;
+using Arch.Core.Events;
 using Arch.Core.Extensions;
+using Arch.Core.Extensions.Internal;
 using Arch.Core.Utils;
 using CommunityToolkit.HighPerformance;
 
@@ -10,6 +12,7 @@ namespace Arch.Core;
 ///     Chunks are internally allocated and filled by <see cref="Archetype"/>'s.
 ///     Through them it is possible to efficiently provide or trim memory for additional entities.
 /// </summary>
+[SkipLocalsInit]  // Really a speed improvements? The benchmark only showed a slight improvement
 public partial struct Chunk
 {
     /// <summary>
@@ -76,6 +79,7 @@ public partial struct Chunk
 
     /// <summary>
     ///     Inserts an entity into the <see cref="Chunk"/>.
+    ///     This won't fire an event for <see cref="EntityCreatedHandler"/>.
     /// </summary>
     /// <param name="entity">The <see cref="Arch.Core.Entity"/> that will be inserted.</param>
     /// <returns>The index occupied by the <see cref="Arch.Core.Entity"/> in the chunk.</returns>
@@ -90,6 +94,7 @@ public partial struct Chunk
 
     /// <summary>
     ///     Sets or replaces a component for an index in the chunk.
+    ///     This won't fire an event for <see cref="ComponentSetHandler{T}"/>.
     /// </summary>
     /// <typeparam name="T">The generic type.</typeparam>
     /// <param name="index">The index in the array.</param>
@@ -171,6 +176,7 @@ public partial struct Chunk
     /// <summary>
     ///     Removes the <see cref="Arch.Core.Entity"/> at an index with all its components.
     ///     Copies the last <see cref="Arch.Core.Entity"/> in its place to ensure a uniform array.
+    ///     This won't fire an event for <see cref="ComponentRemovedHandler"/>.
     /// </summary>
     /// <param name="index">Its index.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -235,6 +241,7 @@ public partial struct Chunk
     private int Index<T>()
     {
         var id = Component<T>.ComponentType.Id;
+        Debug.Assert(id != -1 && id < ComponentIdToArrayIndex.Length, $"Index is out of bounds, component {typeof(T)} with id {id} does not exist in this chunk.");
         return ComponentIdToArrayIndex.DangerousGetReferenceAt(id);
     }
 
@@ -248,6 +255,7 @@ public partial struct Chunk
     public T[] GetArray<T>()
     {
         var index = Index<T>();
+        Debug.Assert(index != -1 && index < Components.Length, $"Index is out of bounds, component {typeof(T)} with id {index} does not exist in this chunk.");
         ref var array = ref Components.DangerousGetReferenceAt(index);
         return Unsafe.As<T[]>(array);
     }
@@ -283,6 +291,7 @@ public partial struct Chunk
 
     /// <summary>
     ///     Sets or replaces a component for an index in the chunk.
+    ///     This won't fire an event for <see cref="ComponentSetHandler{T}"/>.
     /// </summary>
     /// <param name="index">The index in the array.</param>
     /// <param name="cmp">The component value.</param>
@@ -302,7 +311,7 @@ public partial struct Chunk
     [Pure]
     public bool Has(ComponentType t)
     {
-        var id = Component.GetComponentType(t).Id;
+        var id = t.Id;
         if (id >= ComponentIdToArrayIndex.Length)
         {
             return false;
@@ -383,7 +392,7 @@ public partial struct Chunk
         for (var i = 0; i < sourceComponents.Length; i++)
         {
             var sourceArray = sourceComponents[i];
-            var sourceType = sourceArray.GetType().GetElementType();
+            var sourceType = (ComponentType) sourceArray.GetType().GetElementType()!;
 
             if (!destination.Has(sourceType))
             {
@@ -415,13 +424,14 @@ public partial struct Chunk
         {
             var sourceArray = sourceComponents[i];
             var sourceType = sourceArray.GetType().GetElementType();
+            var compType = (ComponentType) sourceType!;
 
-            if (!destination.Has(sourceType))
+            if (!destination.Has(compType))
             {
                 continue;
             }
 
-            var destinationArray = destination.GetArray(sourceType);
+            var destinationArray = destination.GetArray(compType);
             Array.Copy(sourceArray, index, destinationArray, destinationIndex, length);
         }
     }
@@ -438,7 +448,7 @@ public partial struct Chunk
     {
         // Get last entity
         var lastIndex = chunk.Size - 1;
-        var lastEntity = chunk.Entities[lastIndex];
+        var lastEntity = chunk.Entity(lastIndex);
 
         // Replace index entity with the last entity from the other chunk
         Entities[index] = lastEntity;
