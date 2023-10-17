@@ -14,6 +14,11 @@ public partial struct QueryDescription : IEquatable<QueryDescription>
 {
 
     /// <summary>
+    ///     A null reference, basically an empty <see cref="QueryDescription"/> that queries for all <see cref="Entity"/>s.
+    /// </summary>
+    public static readonly QueryDescription Null = new();
+
+    /// <summary>
     ///     An array of all components that an <see cref="Entity"/> should have mandatory.
     /// </summary>
     public ComponentType[] All = Array.Empty<ComponentType>();
@@ -201,13 +206,6 @@ public readonly partial struct Query : IEquatable<Query>
         if (description.Exclusive.Length != 0)
         {
             _isExclusive = true;
-        }
-
-        // Otherwise an Any value of 0 always returns false somehow.
-        if (description.Any.Length == 0)
-        {   // TODO : Better solution?
-            _any.SetBit(ComponentRegistry.Size); // This increases the array to account ALL components
-            _any.SetAll();                       // Set all to any since all are wanted
         }
 
         _queryDescription = description;

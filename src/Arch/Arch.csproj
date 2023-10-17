@@ -8,23 +8,28 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <Nullable>enable</Nullable>
-    <!--<TreatWarningsAsErrors>true</TreatWarningsAsErrors>-->
-
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
 
     <PackageId>Arch</PackageId>
     <Title>Arch</Title>
-    <Version>1.2.5.3-alpha</Version>
+    <Version>1.2.7</Version>
     <Authors>genaray</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <Description>A high performance c# net.6 and net.7 archetype based ECS ( Entity component system ).</Description>
-    <PackageReleaseNotes>Added Entity-Events.
-Added Archetype-Edges for faster single Add-Component operations.
-Better Component-Registration and methods, now also works for most structs.
-Increased performance for lookups and bulk operations due to better shift handling.
-Added dangerous utility methods for acessing some internals, this will be used in the serialisation package. 
-Worlds are now recycled correctly.</PackageReleaseNotes>
-    <PackageTags>c#;.net;.net6;.net7;ecs;game;entity;gamedev; game-development; game-engine; entity-component-system;</PackageTags>
+    <PackageReleaseNotes>Added more dangerous utility methods.
+Entity now implements IComparable&lt;Entity&gt;.
+DangerousWorldExtension can now return the Slot for an entity, used for dangerous acess and serialisation.
+Checking a default entity or reference for IsAlive now returns false.
+Archetypes with zero entities are now skipped during iteration.
+BitSets are now vectorized, resulting in faster checks when large amounts of components are used.
+.SetEntities for Archetypes as a dangerous util. 
+Added native-AOT Support:
+Faster single .add and .remove operations.
+Querys can not iterate "empty" entities. 
+Removed in Entity modifier for improved performance. </PackageReleaseNotes>
+    <PackageTags>c#;.net;.net6;.net7;ecs;game;entity;gamedev; game-development; game-engine; entity-component-system;stride;unity;godot;</PackageTags>
 
     <PackageProjectUrl>https://github.com/genaray/Arch</PackageProjectUrl>
     <RepositoryUrl>https://github.com/genaray/Arch.git</RepositoryUrl>
@@ -34,17 +39,42 @@ Worlds are now recycled correctly.</PackageReleaseNotes>
     <LangVersion>11</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Copyright>Apache2.0</Copyright>
-    <PackageLicenseUrl></PackageLicenseUrl>
 
     <NoWarn>1701;1702;1591</NoWarn>
+
+    <Configurations>Debug;Debug-PureECS;Debug-Events;Release;Release-PureECS;Release-Events;</Configurations>
+
+    <UnityPublish>true</UnityPublish>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DefineConstants>TRACE;</DefineConstants>
+    <Optimize>false</Optimize>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug-PureECS'">
+    <DefineConstants>TRACE;PURE_ECS;</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug-Events'">
     <DefineConstants>TRACE;EVENTS;</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <DefineConstants>TRACE</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release-Events'">
+    <DefineConstants>TRACE;EVENTS;</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release-PureECS'">
+    <DefineConstants>TRACE;PURE_ECS</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
   <ItemGroup>
@@ -69,9 +99,10 @@ Worlds are now recycled correctly.</PackageReleaseNotes>
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Arch.LowLevel" Version="1.0.8" />
     <PackageReference Include="Collections.Pooled" Version="2.0.0-preview.27" />
     <PackageReference Include="CommunityToolkit.HighPerformance" Version="7.1.2" />
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="5.0.0" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
     <PackageReference Include="ZeroAllocJobScheduler" Version="1.0.2" />
   </ItemGroup>
 
